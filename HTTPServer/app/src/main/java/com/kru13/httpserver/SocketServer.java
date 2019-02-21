@@ -18,16 +18,21 @@ import android.os.Environment;
 import android.support.annotation.RequiresApi;
 import android.util.Log;
 
-public class SocketServer extends Thread {
+public class SocketServer extends Thread
+{
 	
 	ServerSocket serverSocket;
 	public final int port = 12345;
 	boolean bRunning;
 	
-	public void close() {
-		try {
+	public void close()
+	{
+		try
+		{
 			serverSocket.close();
-		} catch (IOException e) {
+		}
+		catch (IOException e)
+		{
 			Log.d("SERVER", "Error, probably interrupted in accept(), see log");
 			e.printStackTrace();
 		}
@@ -35,8 +40,10 @@ public class SocketServer extends Thread {
 	}
 	
 	@RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
-	public void run() {
-        try {
+	public void run()
+	{
+        try
+		{
 			serverSocket = new ServerSocket(port);
 			bRunning = true;
         	while(bRunning)
@@ -47,18 +54,22 @@ public class SocketServer extends Thread {
 			}
 
         } 
-        catch (IOException e) {
+        catch (IOException e)
+		{
             if (serverSocket != null && serverSocket.isClosed())
-            	Log.d("SERVER", "Normal exit");
-            else {
+			{
+				Log.d("SERVER", "Normal exit");
+			}
+            else
+            {
             	Log.d("SERVER", "Error");
             	e.printStackTrace();
             }
         }
-        finally {
+        finally
+		{
         	serverSocket = null;
         	bRunning = false;
         }
     }
-
 }
