@@ -15,15 +15,21 @@ import java.util.List;
 
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
 import android.support.annotation.RequiresApi;
 import android.util.Log;
 
 public class SocketServer extends Thread {
-	
+
 	ServerSocket serverSocket;
+	Handler messageHandler;
 	public final int port = 12345;
 	boolean bRunning;
-	
+
+	public SocketServer(Handler messageHandler) {
+		this.messageHandler = messageHandler;
+	}
+
 	public void close() {
 		try {
 			serverSocket.close();
@@ -33,32 +39,32 @@ public class SocketServer extends Thread {
 		}
 		bRunning = false;
 	}
-	
+
 	@RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
 	public void run() {
-        try {
+		try {
 			serverSocket = new ServerSocket(port);
 			bRunning = true;
-        	while(bRunning)
+			while(bRunning)
 			{
 				Log.d("SERVER", "Creating Socket");
 				Socket s = serverSocket.accept();
-				new ClientThread(s).start();
+				new ClientThread(s, messageHandler).start();
 			}
 
-        } 
-        catch (IOException e) {
-            if (serverSocket != null && serverSocket.isClosed())
-            	Log.d("SERVER", "Normal exit");
-            else {
-            	Log.d("SERVER", "Error");
-            	e.printStackTrace();
-            }
-        }
-        finally {
-        	serverSocket = null;
-        	bRunning = false;
-        }
-    }
+		}
+		catch (IOException e) {
+			if (serverSocket != null && serverSocket.isClosed())
+				Log.d("SERVER", "Normal exit");
+			else {
+				Log.d("SERVER", "Error");
+				e.printStackTrace();
+			}
+		}
+		finally {
+			serverSocket = null;
+			bRunning = false;
+		}
+	}
 
 }

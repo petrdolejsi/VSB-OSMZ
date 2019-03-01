@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="app_name">HTTPServer</string>
+    <string name="app_name">HTTP Server</string>
     <string name="action_settings">Settings</string>
     <string name="hello_world">Hello world!</string>
     <string name="btn1_text">Start HTTP Server</string>
     <string name="btn2_text">Stop HTTP Server</string>
+    <string name="server_run_text">Server is running</string>
+    <string name="server_stop_text">Server is stopped</string>
+    <string name="delete_info">Delete info</string>
+    <string name="amount">Amount</string>
+    <string name="server">Server</string>
+    <string name="ip">IP</string>
 
 </resources>
