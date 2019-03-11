@@ -49,10 +49,17 @@
         android:gravity="center"
         android:text="@string/amount" />
 
+    <FrameLayout
+        android:id="@+id/camera_preview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center" />
+
     <TextView
         android:id="@+id/log"
         android:layout_width="match_parent"
-        android:layout_height="284dp"
+        android:layout_height="140dp"
         android:layout_margin="5dp"
         android:scrollbars="vertical"
         android:text="" />

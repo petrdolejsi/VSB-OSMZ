@@ -84,7 +84,18 @@ public class ClientThread extends Thread
 
             File file = new File(Environment.getExternalStorageDirectory().getPath() + "/HttpServer" + fileName);
 
-            if (file.isDirectory())
+            if (fileName.equals("/camera"))
+            {
+                String html = "<html><head><title>Camera image</title><meta http-equiv=\"refresh\" content=\"1\"></head><body><img src=\"camera/camera.jpg\" alt=\"camera\"></body></html>";
+
+                out.write("HTTP/1.1 200 OK");
+                out.write("Content-type: text/html\n");
+                out.write("Content-Length:" + String.valueOf(html.length()) + "\n");
+                out.write("\n");
+                out.write(html);
+                out.flush();
+            }
+            else if (file.isDirectory())
             {
                 Log.d("FILE TYPE", "Folder");
                 String html = "";
