@@ -10,15 +10,16 @@ import java.io.IOException;
 
 import static android.content.ContentValues.TAG;
 
-public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
+/** A basic Camera preview class */
+public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback  {
     private SurfaceHolder mHolder;
     private Camera mCamera;
+    private Camera.PictureCallback callback;
 
-    public CameraPreview(Context context, Camera camera) {
+    public CameraPreview(Context context, Camera camera, Camera.PictureCallback callback) {
         super(context);
         mCamera = camera;
-
-        //mCamera.setDisplayOrientation(90);
+        this.callback = callback;
 
         // Install a SurfaceHolder.Callback so we get notified when the
         // underlying surface is created and destroyed.
@@ -31,6 +32,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     public void surfaceCreated(SurfaceHolder holder) {
         // The Surface has been created, now tell the camera where to draw the preview.
         try {
+            this.getHolder().removeCallback(this);
             mCamera.setPreviewDisplay(holder);
             mCamera.startPreview();
         } catch (IOException e) {
@@ -51,6 +53,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             return;
         }
 
+        Log.d(TAG, "ServerActivity setting surface");
         // stop preview before making changes
         try {
             mCamera.stopPreview();

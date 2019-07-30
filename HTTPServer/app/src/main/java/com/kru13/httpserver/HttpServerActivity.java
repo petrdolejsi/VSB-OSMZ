@@ -1,22 +1,30 @@
 package com.kru13.httpserver;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
 import android.hardware.Camera;
-import android.media.ExifInterface;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
-import android.app.Activity;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.os.StrictMode;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.text.format.Formatter;
-import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
@@ -24,260 +32,344 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.text.DecimalFormat;
-import java.util.Date;
+import java.util.ArrayList;
 
-import static android.content.ContentValues.TAG;
 
-public class HttpServerActivity extends Activity implements OnClickListener
-{
+public class HttpServerActivity extends Activity implements OnClickListener{
 
-	private SocketServer s;
-	private Camera mCamera;
-	private CameraPreview mPreview;
+    public static String MESSAGE_STATUS = "MSG_STATUS";
+    public static String DATA_STATUS = "DATA_STATUS";
 
-	private Handler cameraHandler = new Handler();
+    private SocketServer s;
+    public static Handler handler;
+    private RecyclerView mStatusRecyclerView;
+    private StatusRecyclerAdapter mStatusAdapter;
+    private Camera camera;
+    private CameraPreview cameraPreview;
+    private byte[] picture;
+    private boolean running = false;
 
-	public static final double usedData = 0;
+    public static final double usedData = 0;
 
-	SharedPreferences sharedpreferences;
+    SharedPreferences sharedPreferences;
 
-	@Override
-	protected void onCreate(Bundle savedInstanceState)
-	{
-		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_http_server);
+    public byte[] getPicture()
+    {
+        //return picture;
 
-		sharedpreferences = this.getSharedPreferences("com.kru13.httpserver", Context.MODE_PRIVATE);
+        Bitmap realImage = BitmapFactory.decodeByteArray(picture, 0, picture.length);
 
-		Button btn1 = (Button) findViewById(R.id.button1);
-		Button btn2 = (Button) findViewById(R.id.button2);
+        realImage= rotate(realImage, 90);
 
-		TextView IpAddress = (TextView) findViewById(R.id.ipAddress);
-		WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-		String ipAddress = Formatter.formatIpAddress(wifiManager.getConnectionInfo().getIpAddress());
-		if (ipAddress.equals("0.0.0.0"))
-		{
-			IpAddress.setText("No IP available");
-		}
-		else
-		{
-			IpAddress.setText("Your Device IP Address: " + ipAddress);
-		}
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
 
-		TextView log = (TextView) findViewById(R.id.log);
-		log.setMovementMethod(new ScrollingMovementMethod());
+        realImage.compress(Bitmap.CompressFormat.JPEG,50,stream);
 
-		TextView usedData = findViewById(R.id.usedData);
-		long usedDataValue = sharedpreferences.getLong("usedData",0);
-		usedData.setText("Amount of used data: " + readableFileSize(usedDataValue));
+        return stream.toByteArray();
+    }
 
-		btn1.setOnClickListener(this);
-		btn2.setOnClickListener(this);
+    private Camera.PictureCallback mPicture = new Camera.PictureCallback()
+    {
 
-		Button deleteBtn = (Button) findViewById(R.id.deleteBtn);
-		deleteBtn.setOnClickListener(new View.OnClickListener() {
+        @Override
+        public void onPictureTaken(byte[] data, Camera camera)
+        {
 
-			@Override
-			public void onClick(View view) {
-				TextView usedData = findViewById(R.id.usedData);
-				long usedDataValue = 0;
-				sharedpreferences.edit().putLong("usedData", usedDataValue).commit();
-				usedData.setText("Amount of used data: " + readableFileSize(usedDataValue));
+            picture = data;
+            if (data != null)
+            {
+                camera.startPreview();
+            }
+        }
+    };
+    private Camera.PreviewCallback mPprev = new Camera.PreviewCallback()
+    {
 
-				TextView text = findViewById(R.id.log);
-				text.setText("");
-			}
-		});
+        @Override
+        public void onPreviewFrame(byte[] bytes, Camera camera)
+        {
+            picture = convertoToJpeg(bytes, camera);
+        }
+    };
 
-		mCamera = getCameraInstance();
+    @Override
+    protected void onCreate(Bundle savedInstanceState)
+    {
+        super.onCreate(savedInstanceState);
 
-		// Create our Preview view and set it as the content of our activity.
-		mPreview = new CameraPreview(this, mCamera);
-		FrameLayout preview = (FrameLayout) findViewById(R.id.camera_preview);
-		preview.addView(mPreview);
-	}
+        sharedPreferences = this.getSharedPreferences("com.kru13.httpserver", Context.MODE_PRIVATE);
 
-	public void takePicture(){
-		//mCamera.setDisplayOrientation(90);
-		mCamera.takePicture(null, null, mPicture);
+        StrictMode.ThreadPolicy policy = new
+        StrictMode.ThreadPolicy.Builder().permitAll().build();
+        StrictMode.setThreadPolicy(policy);
 
-		cameraHandler.postDelayed(new Runnable() {
-			@Override
-			public void run() {
-				takePicture();
-			}
-		}, 1000);
-	}
+        setContentView(R.layout.activity_http_server);
 
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu)
-	{
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.http_server, menu);
-		return true;
-	}
+        Button btn1 = (Button)findViewById(R.id.button1);
+        Button btn2 = (Button)findViewById(R.id.button2);
 
-	public static String readableFileSize(long size) {
-		if(size <= 0) return "0";
-		final String[] units = new String[] { "B", "kB", "MB", "GB", "TB" };
-		int digitGroups = (int) (Math.log10(size)/Math.log10(1024));
-		return new DecimalFormat("#,##0.#").format(size/Math.pow(1024, digitGroups)) + " " + units[digitGroups];
-	}
+        btn1.setOnClickListener(this);
+        btn2.setOnClickListener(this);
 
-	@Override
-	public void onClick(View v) {
-		// TODO Auto-generated method stub
-		if (v.getId() == R.id.button1)
-		{
-			s = new SocketServer(messageHandler);
-			s.start();
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED)
+        {
 
-			TextView serverState = (TextView)findViewById(R.id.serverState);
-			serverState.setText(getString(R.string.server_run_text));
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE))
+            {
 
-			TextView text = findViewById(R.id.log);
-			Date date = new Date();
-			String dateString = date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
-			String typeOfRequest = "Start server";
-			String nameOfSite = "";
-			text.setText(dateString + "\t" + typeOfRequest +"\t" + nameOfSite + "\n" + text.getText());
+            }
+            else
+            {
+                // No explanation needed; request the permission
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        1);
 
-			Toast.makeText(this, getString(R.string.server_run_text), Toast.LENGTH_SHORT).show();
+            }
+        }
 
-			takePicture();
-		}
-		if (v.getId() == R.id.button2 && (s != null && s.bRunning == true ))
-		{
-			s.close();
-			TextView text = findViewById(R.id.log);
-			Date date = new Date();
-			String dateString = date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
-			String typeOfRequest = "Stop server";
-			String nameOfSite = "";
-			text.setText(dateString + "\t" + typeOfRequest +"\t" + nameOfSite + "\n" + text.getText());
-			try
-			{
-				s.join();
-			}
-			catch (InterruptedException e)
-			{
-				e.printStackTrace();
-			}
+        TextView IpAddress = (TextView) findViewById(R.id.ipAddress);
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        String ipAddress = Formatter.formatIpAddress(wifiManager.getConnectionInfo().getIpAddress());
+        if (ipAddress.equals("0.0.0.0"))
+        {
+            IpAddress.setText("No IP available");
+        }
+        else
+        {
+            IpAddress.setText("IP Address: " + ipAddress);
+        }
 
-			TextView serverState = (TextView)findViewById(R.id.serverState);
-			serverState.setText(getString(R.string.server_stop_text));
+        TextView serverState = (TextView)findViewById(R.id.serverState);
+        serverState.setText(getString(R.string.server_stop_text));
 
-			Toast.makeText(this, getString(R.string.server_stop_text), Toast.LENGTH_SHORT).show();
-		}
-	}
+        checkCameraHardware(this);
 
-	private final Handler messageHandler = new Handler() {
-		@Override
-		public void handleMessage(Message msg) {
-			Bundle bundle = msg.getData();
-			TextView text = findViewById(R.id.log);
+        mStatusRecyclerView = findViewById(R.id.status_recycler);
+        LinearLayoutManager mLayoutManager = new LinearLayoutManager(this);
 
-			Date date = new Date();
-			String dateString = date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+        mStatusRecyclerView.setLayoutManager(mLayoutManager);
 
-			String typeOfRequest = bundle.getString("REQUEST");
+        mStatusAdapter = new StatusRecyclerAdapter(this, new ArrayList());
+        mStatusRecyclerView.setAdapter(mStatusAdapter);
 
-			String nameOfSite = bundle.getString("NAME");
+        handler = new Handler()
+        {
+            @Override
+            public void handleMessage(Message msg)
+            {
+                super.handleMessage(msg);
 
-			text.setText(dateString + "\t" + typeOfRequest +"\t" + nameOfSite + "\n" + text.getText());
+                Bundle data = msg.getData();
 
-			TextView usedData = findViewById(R.id.usedData);
-			long usedDataValue = sharedpreferences.getLong("usedData",0);
-			usedDataValue += bundle.getLong("SIZE");
-			usedData.setText("Amount of used data: " + readableFileSize(usedDataValue));
-			sharedpreferences.edit().putLong("usedData", usedDataValue).commit();
-		}
-	};
+                String message = data.getString(MESSAGE_STATUS);
+                Long size = data.getLong(DATA_STATUS);
 
-	public  Camera getCameraInstance(){
-		try {
-		    mCamera = Camera.open(); // attempt to get a Camera instance
-			mCamera.setDisplayOrientation(90);
-		}
-		catch (Exception e){
-			// Camera is not available (in use or does not exist)
-		}
-		return mCamera; // returns null if camera is unavailable
-	}
-
-	private Camera.PictureCallback mPicture = new Camera.PictureCallback() {
-
-		@Override
-		public void onPictureTaken(byte[] data, Camera camera) {
-
-			File pictureFile = getOutputMediaFile();
-			if (pictureFile == null){
-				Log.d(TAG, "Error creating media file, check storage permissions");
-				return;
-			}
-
-			try {
-				FileOutputStream fos = new FileOutputStream(pictureFile);
-
-                Bitmap realImage = BitmapFactory.decodeByteArray(data, 0, data.length);
-
-                ExifInterface exif=new ExifInterface(pictureFile.toString());
-
-                Log.d("EXIF value", exif.getAttribute(ExifInterface.TAG_ORIENTATION));
-                if(exif.getAttribute(ExifInterface.TAG_ORIENTATION).equalsIgnoreCase("6")){
-                    realImage= rotate(realImage, 90);
-                } else if(exif.getAttribute(ExifInterface.TAG_ORIENTATION).equalsIgnoreCase("8")){
-                    realImage= rotate(realImage, 270);
-                } else if(exif.getAttribute(ExifInterface.TAG_ORIENTATION).equalsIgnoreCase("3")){
-                    realImage= rotate(realImage, 180);
-                } else if(exif.getAttribute(ExifInterface.TAG_ORIENTATION).equalsIgnoreCase("0")){
-                    realImage= rotate(realImage, 90);
+                if (size > 0)
+                {
+                    TextView usedData = findViewById(R.id.usedData);
+                    long usedDataValue = sharedPreferences.getLong("usedData",0);
+                    usedDataValue += size;
+                    usedData.setText("Amount of used data: " + readableFileSize(usedDataValue));
+                    sharedPreferences.edit().putLong("usedData", usedDataValue).commit();
                 }
 
-                boolean bo = realImage.compress(Bitmap.CompressFormat.JPEG, 100, fos);
+                mStatusAdapter.insert(message);
+            }
+        };
 
-				fos.write(data);
-				fos.close();
-			} catch (FileNotFoundException e) {
-				Log.d(TAG, "File not found: " + e.getMessage());
-			} catch (IOException e) {
-				Log.d(TAG, "Error accessing file: " + e.getMessage());
-			}
-			mCamera.startPreview();
-		}
-	};
+        camera = getCameraInstance();
+        camera.setPreviewCallback(mPprev);
+        Log.d("ServerActivity","have camera? " + (camera != null));
+        cameraPreview = new CameraPreview(this, camera, mPicture);
+        FrameLayout preview = findViewById(R.id.camera_preview);
+        preview.addView(cameraPreview);
 
-	private static File getOutputMediaFile(){
-		// To be safe, you should check that the SDCard is mounted
-		// using Environment.getExternalStorageState() before doing this.
+        camera.startPreview();
+    }
 
-		File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(
-				Environment.DIRECTORY_PICTURES), "MyCameraApp");
-		// This location works best if you want the created images to be shared
-		// between applications and persist after your app has been uninstalled.
+    @Override
+    public void onPause()
+    {
+        super.onPause();
+        camera.stopPreview();
+        if (camera != null) {
+            camera.release();
+            camera = null;
+        }
+    }
 
-		// Create the storage directory if it does not exist
-		if (! mediaStorageDir.exists()){
-			if (! mediaStorageDir.mkdirs()){
-				Log.d("MyCameraApp", "failed to create directory");
-				return null;
-			}
-		}
+    @Override
+    public void onStop()
+    {
+        super.onStop();
+        if (camera != null) {
+            camera.stopPreview();
+            camera.release();
+            camera = null;
+        }
+    }
 
-		// Create a media file name
-		File mediaFile;
-		mediaFile = new File(Environment.getExternalStorageDirectory().getPath() + "/HttpServer/camera" + File.separator +
-				"camera.jpg");
 
-        return mediaFile;
-	}
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu)
+    {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.http_server, menu);
+        return true;
+    }
 
-    public static Bitmap rotate(Bitmap bitmap, int degree) {
+
+    @Override
+    public void onClick(View v)
+    {
+        // TODO Auto-generated method stub
+        if (v.getId() == R.id.button1)
+        {
+            s = new SocketServer(handler, this, camera);
+            s.start();
+
+            TextView serverState = (TextView)findViewById(R.id.serverState);
+            serverState.setText(getString(R.string.server_run_text));
+
+            Toast.makeText(this, getString(R.string.server_run_text), Toast.LENGTH_SHORT).show();
+
+            running = true;
+
+            takePicture();
+        }
+        if (v.getId() == R.id.button2)
+        {
+            try
+            {
+                s.close();
+                s.join();
+            }
+            catch (InterruptedException e)
+            {
+                e.printStackTrace();
+            }
+
+            TextView serverState = (TextView)findViewById(R.id.serverState);
+            serverState.setText(getString(R.string.server_stop_text));
+
+            running = false;
+
+            Toast.makeText(this, getString(R.string.server_stop_text), Toast.LENGTH_SHORT).show();
+        }
+        if (v.getId() == R.id.delete_data)
+        {
+            TextView usedData = findViewById(R.id.usedData);
+            long usedDataValue = 0;
+            sharedPreferences.edit().putLong("usedData", usedDataValue).commit();
+            usedData.setText("Amount of used data: " + readableFileSize(usedDataValue));
+        }
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item)
+    {
+        if (item.getItemId() == R.id.delete_data)
+        {
+            TextView usedData = findViewById(R.id.usedData);
+            long usedDataValue = 0;
+            sharedPreferences.edit().putLong("usedData", usedDataValue).commit();
+            usedData.setText("Amount of used data: " + readableFileSize(usedDataValue));
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
+    private boolean checkCameraHardware(Context context)
+    {
+
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.CAMERA))
+            {
+
+            }
+            else
+            {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.CAMERA},
+                        1);
+
+            }
+        }
+        return true;
+    }
+
+    public static Camera getCameraInstance()
+    {
+        Camera c = null;
+        try
+        {
+            c = Camera.open();
+            c.setDisplayOrientation(90);
+        }
+        catch (Exception e)
+        {
+            // Camera is not available (in use or does not exist)
+        }
+        Log.d("ServerActivity","Get camera ? " + (c != null));
+        return c; // returns null if camera is unavailable
+    }
+
+    public void takePicture(){
+        if (camera == null)
+        {
+            return;
+        }
+
+        if (!running)
+        {
+            return;
+        }
+
+        camera.takePicture(null, null, mPicture);
+
+        handler.postDelayed(new Runnable()
+        {
+            @Override
+            public void run() {
+                takePicture();
+            }
+        }, 500);
+    }
+
+    public byte[] convertoToJpeg(byte[] data, Camera camera)
+    {
+
+        YuvImage image = new YuvImage(data, ImageFormat.NV21,
+                camera.getParameters().getPreviewSize().width, camera.getParameters().getPreviewSize().height, null);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        int quality = 20; //set quality
+        image.compressToJpeg(new Rect(0, 0, camera.getParameters().getPreviewSize().width, camera.getParameters().getPreviewSize().height), quality, baos);//this line decreases the image quality
+
+        return baos.toByteArray();
+    }
+
+    public static String readableFileSize(long size)
+    {
+        if(size <= 0) return "0";
+        final String[] units = new String[] { "B", "kB", "MB", "GB", "TB" };
+        int digitGroups = (int) (Math.log10(size)/Math.log10(1024));
+        return new DecimalFormat("#,##0.#").format(size/Math.pow(1024, digitGroups)) + " " + units[digitGroups];
+    }
+
+    public static Bitmap rotate(Bitmap bitmap, int degree)
+    {
         int w = bitmap.getWidth();
         int h = bitmap.getHeight();
 

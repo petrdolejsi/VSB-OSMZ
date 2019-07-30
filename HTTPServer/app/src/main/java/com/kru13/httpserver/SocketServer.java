@@ -1,70 +1,77 @@
 package com.kru13.httpserver;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
-
-import android.os.Build;
-import android.os.Environment;
+import android.hardware.Camera;
+import android.os.Bundle;
 import android.os.Handler;
-import android.support.annotation.RequiresApi;
+import android.os.Message;
 import android.util.Log;
+
+import java.io.IOException;
+import java.net.ServerSocket;
+
+import static com.kru13.httpserver.HttpServerActivity.DATA_STATUS;
+import static com.kru13.httpserver.HttpServerActivity.MESSAGE_STATUS;
 
 public class SocketServer extends Thread {
 
-	ServerSocket serverSocket;
-	Handler messageHandler;
-	public final int port = 12345;
-	boolean bRunning;
+    private ServerSocket serverSocket;
+    private ClientHandler serverHandler;
+    private HttpServerActivity activity;
+    private Handler handler;
+    private final int port = 12345;
+    private Camera camera;
 
-	public SocketServer(Handler messageHandler) {
-		this.messageHandler = messageHandler;
-	}
+    public SocketServer(Handler handler, HttpServerActivity activity, Camera camera)
+    {
+        this.handler = handler;
+        this.activity = activity;
+        this.camera = camera;
+    }
 
-	public void close() {
-		try {
-			serverSocket.close();
-		} catch (IOException e) {
-			Log.d("SERVER", "Error, probably interrupted in accept(), see log");
-			e.printStackTrace();
-		}
-		bRunning = false;
-	}
+    public void close()
+    {
+        try
+        {
+            if(!serverSocket.isClosed())
+            {
 
-	@RequiresApi(api = Build.VERSION_CODES.GINGERBREAD)
-	public void run() {
-		try {
-			serverSocket = new ServerSocket(port);
-			bRunning = true;
-			while(bRunning)
-			{
-				Log.d("SERVER", "Creating Socket");
-				Socket s = serverSocket.accept();
-				new ClientThread(s, messageHandler).start();
-			}
+                serverSocket.close();
+                sendMessage(handler, "Socket server exited", Long.valueOf(0));
+            }
+        }
+        catch (IOException e)
+        {
+            Log.d("SERVER", "Error, probably interrupted in accept(), see log");
+            e.printStackTrace();
+        }
+    }
 
-		}
-		catch (IOException e) {
-			if (serverSocket != null && serverSocket.isClosed())
-				Log.d("SERVER", "Normal exit");
-			else {
-				Log.d("SERVER", "Error");
-				e.printStackTrace();
-			}
-		}
-		finally {
-			serverSocket = null;
-			bRunning = false;
-		}
-	}
+    public void run()
+    {
+        try
+        {
+            serverSocket = new ServerSocket(port);
+            serverHandler = new ClientHandler(serverSocket, handler, activity);
+            serverHandler.start();
 
+            sendMessage(handler, "Socket server connected", Long.valueOf(0));
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+
+    public static void sendMessage(Handler handler, String message, Long size)
+    {
+        Message msg = handler.obtainMessage();
+        Bundle bundle = new Bundle();
+        bundle.putString(MESSAGE_STATUS, message);
+        bundle.putLong(DATA_STATUS, size);
+
+        msg.setData(bundle);
+
+        handler.sendMessage(msg);
+    }
 }
